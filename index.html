@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ludo Run For Yuh Life Edition</title>
+    <style>
+        body {
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; margin: 0; background-color: #f0f0f0;
+            font-family: 'Arial Black', sans-serif; overflow: hidden;
+        }
+        .menu-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; align-items: center;
+            justify-content: center; z-index: 100; color: white; text-align: center;
+        }
+        .menu-content { background: #333; padding: 40px; border-radius: 20px; border: 4px solid gold; max-width: 500px; }
+        .name-input-section { margin-bottom: 20px; }
+        .name-input-section input {
+            padding: 10px; font-size: 16px; border-radius: 5px;
+            border: 2px solid gold; width: 80%; text-align: center;
+        }
+        .color-options button, .difficulty-options button { 
+            margin: 10px; padding: 15px; border-radius: 10px; 
+            cursor: pointer; font-weight: bold; border: 2px solid white; 
+        }
+        .multi-btn { 
+            background: gold; color: black; padding: 15px 30px; 
+            margin-top: 20px; cursor: pointer; border-radius: 10px; border: none; font-weight: bold;
+        }
+        .main-layout { display: flex; align-items: center; gap: 30px; }
+        .game-container { box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 5px solid #333; line-height: 0; }
+        .controls { 
+            display: flex; flex-direction: column; align-items: center; 
+            background: #ddd; padding: 20px; border-radius: 15px; border: 3px solid #333; 
+        }
+        .dice-wrapper { display: flex; gap: 15px; margin-bottom: 10px; }
+        #rollBtn {
+            margin-top: 15px; padding: 12px 24px; background-color: #FF3B30;
+            color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;
+        }
+        #rollBtn:disabled { background-color: #999 !important; cursor: not-allowed; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="startMenu" class="menu-overlay">
+        <div class="menu-content">
+            <div id="step1">
+                <h1>LUDI GAME</h1>
+                <div class="name-input-section">
+                    <p>Enter your coach name:</p>
+                    <input type="text" id="playerNameInput" placeholder="Enter Name...">
+                </div>
+                <p>Choose your color:</p>
+                <div class="color-options">
+                    <button onclick="selectColor('red')" style="background:#FF3B30; color:white;">Red</button>
+                    <button onclick="selectColor('green')" style="background:#4CD964; color:white;">Green</button>
+                    <button onclick="selectColor('yellow')" style="background:#FFCC00; color:black;">Yellow</button>
+                    <button onclick="selectColor('blue')" style="background:#007AFF; color:white;">Blue</button>
+                </div>
+                <hr>
+                <button class="multi-btn" onclick="startGame('all')">Play Local Multiplayer (4 Players)</button>
+            </div>
+            <div id="step2" class="hidden">
+                <h1>AI DIFFICULTY</h1>
+                <p>Select how smart the opponents are:</p>
+                <div class="difficulty-options">
+                    <button onclick="finishSetup(1)" style="background:#4CD964;">Easy</button>
+                    <button onclick="finishSetup(2)" style="background:#FFCC00;">Difficult</button>
+                    <button onclick="finishSetup(3)" style="background:#FF3B30; color:white;">Very Very Difficult</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="game-container">
+            <canvas id="ludoBoard" width="600" height="600"></canvas>
+        </div>
+        <div class="controls">
+            <div class="dice-wrapper">
+                <canvas id="dice1" width="100" height="100"></canvas>
+                <canvas id="dice2" width="100" height="100"></canvas>
+            </div>
+            <button id="rollBtn">ROLL DICE</button>
+            <div id="rollStatus">Select a mode to start</div>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('ludoBoard');
+    const ctx = canvas.getContext('2d');
+    const size = 600;
+    const step = size / 15;
+    const rollBtn = document.getElementById('rollBtn');
+    const rollStatus = document.getElementById('rollStatus');
+    const d1ctx = document.getElementById('dice1').getContext('2d');
+    const d2ctx = document.getElementById('dice2').getContext('2d');
+
+    const colors = { red: "#FF3B30", blue: "#007AFF", green: "#4CD964", yellow: "#FFCC00", white: "#FFFFFF", border: "#333" };
+    let playerNames = { red: "Red", green: "Green", yellow: "Yellow", blue: "Blue" };
+
+    let isAiGame = false;
+    let aiDifficulty = 1; 
+    let humanColor = 'red'; 
+    let gameStarted = false;
+    let players = ['red', 'green', 'yellow', 'blue'];
+    let currentTurnIndex = 0; 
+    let diceValues = [1, 1]; 
+    let usedDice = [true, true]; 
+    let bonusRolls = 0;
+    let selectedDieIndex = null; 
+
+    const coachVoices = {
+        red: { pitch: 0.8, rate: 1.0 },
+        green: { pitch: 1.2, rate: 1.1 },
+        yellow: { pitch: 1.0, rate: 1.0 },
+        blue: { pitch: 0.5, rate: 0.8 }
+    };
+
+    function speak(text, color = 'red') {
+        window.speechSynthesis.cancel(); 
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'en-GB'; 
+        msg.pitch = coachVoices[color].pitch;
+        msg.rate = coachVoices[color].rate;
+        window.speechSynthesis.speak(msg);
+    }
+
+    // --- VOICE TRIGGERS ---
+    function playHomeVoice(color) { speak("Thank God I make it Home", color); }
+    function playCaptureVoice(color) { speak("Go back weh you come from!", color); }
+    function playBlockedVoice(color) { speak("Bwoy, yuh cyaa pass yah so!", color); }
+    function playBarrierVoice(color) { speak("My place this!", color); }
+    function playBornVoice(color) { speak("Thank God me bawn!", color); }
+    function playVictoryVoice(color) { speak("Yes Jah, My Family and I reach home safe", color); }
+
+    window.selectColor = function(color) {
+        humanColor = color;
+        const nameInput = document.getElementById('playerNameInput').value.trim();
+        if(nameInput) playerNames[color] = nameInput;
+        document.getElementById('step1').classList.add('hidden');
+        document.getElementById('step2').classList.remove('hidden');
+    };
+
+    window.finishSetup = function(level) {
+        aiDifficulty = level;
+        isAiGame = true;
+        startGame('ai');
+    };
+
+    window.startGame = function(mode) {
+        if(mode === 'all') isAiGame = false;
+        document.getElementById('startMenu').style.display = 'none';
+        gameStarted = true;
+        updateTurnUI();
+        if (isAiGame && players[currentTurnIndex] !== humanColor) { setTimeout(aiTurn, 1500); }
+    };
+
+    function updateTurnUI() {
+        const currentColor = players[currentTurnIndex];
+        rollStatus.innerText = `${playerNames[currentColor].toUpperCase()}'s turn!`;
+        rollBtn.style.backgroundColor = colors[currentColor];
+        rollBtn.style.color = (currentColor === 'yellow' || currentColor === 'green') ? 'black' : 'white';
+    }
+
+    const outerTrack = [[1,6],[2,6],[3,6],[4,6],[5,6],[6,5],[6,4],[6,3],[6,2],[6,1],[6,0],[7,0],[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[9,6],[10,6],[11,6],[12,6],[13,6],[14,6],[14,7],[14,8],[13,8],[12,8],[11,8],[10,8],[9,8],[8,9],[8,10],[8,11],[8,12],[8,13],[8,14],[7,14],[6,14],[6,13],[6,12],[6,11],[6,10],[6,9],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8],[0,7],[1,7]];
+    const paths = {
+        red: [...outerTrack.slice(0, 52), [1,7], [2,7], [3,7], [4,7], [5,7], [7,7]],
+        green: [...outerTrack.slice(13, 52), ...outerTrack.slice(0, 13), [7,1], [7,2], [7,3], [7,4], [7,5], [7,7]],
+        yellow: [...outerTrack.slice(26, 52), ...outerTrack.slice(0, 26), [13,7], [12,7], [11,7], [10,7], [9,7], [7,7]],
+        blue: [...outerTrack.slice(39, 52), ...outerTrack.slice(0, 39), [7,13], [7,12], [7,11], [7,10], [7,9], [7,7]]
+    };
+
+    let allTokens = {
+        red: [{id:0,pos:-1,startX:1.5,startY:1.5},{id:1,pos:-1,startX:4.5,startY:1.5},{id:2,pos:-1,startX:1.5,startY:4.5},{id:3,pos:-1,startX:4.5,startY:4.5}],
+        green: [{id:0,pos:-1,startX:10.5,startY:1.5},{id:1,pos:-1,startX:13.5,startY:1.5},{id:2,pos:-1,startX:10.5,startY:4.5},{id:3,pos:-1,startX:13.5,startY:4.5}],
+        yellow: [{id:0,pos:-1,startX:10.5,startY:10.5},{id:1,pos:-1,startX:13.5,startY:10.5},{id:2,pos:-1,startX:10.5,startY:13.5},{id:3,pos:-1,startX:13.5,startY:13.5}],
+        blue: [{id:0,pos:-1,startX:1.5,startY:10.5},{id:1,pos:-1,startX:4.5,startY:10.5},{id:2,pos:-1,startX:1.5,startY:13.5},{id:3,pos:-1,startX:4.5,startY:13.5}]
+    };
+
+    function getCoord(color, pos) { return (pos === -1) ? null : paths[color][pos]; }
+
+    function isPathBlocked(token, color, moveAmount) {
+        if (token.pos === -1 && moveAmount !== 6) return { blocked: true };
+        let startPos = (token.pos === -1) ? -1 : token.pos;
+        if (startPos + moveAmount >= paths[color].length) return { blocked: true };
+        for (let i = 1; i <= moveAmount; i++) {
+            let coord = paths[color][startPos + i];
+            for (let oc of players) {
+                if (oc === color) continue;
+                if (allTokens[oc].filter(t => { const c = getCoord(oc, t.pos); return c && c[0] === coord[0] && c[1] === coord[1]; }).length >= 2) return { blocked: true };
+            }
+        }
+        return { blocked: false };
+    }
+
+    function canTokenMove(token, color, dieIdx) {
+        if (dieIdx === null || usedDice[dieIdx]) return false;
+        let moveAmount = diceValues[dieIdx];
+        return !isPathBlocked(token, color, moveAmount).blocked;
+    }
+
+    rollBtn.addEventListener('click', () => {
+        if (!gameStarted || rollBtn.disabled) return;
+        diceValues = [Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1];
+        usedDice = [false, false];
+        if (diceValues[0] === 6 || diceValues[1] === 6) bonusRolls++;
+        selectedDieIndex = 0;
+        rollBtn.disabled = true;
+        updateDiceDisplay();
+        checkNoMovesPossible();
+    });
+
+    document.getElementById('dice1').addEventListener('click', () => { if(!usedDice[0]) { selectedDieIndex = 0; updateDiceDisplay(); }});
+    document.getElementById('dice2').addEventListener('click', () => { if(!usedDice[1]) { selectedDieIndex = 1; updateDiceDisplay(); }});
+
+    canvas.addEventListener('click', (e) => {
+        if (!gameStarted || (isAiGame && players[currentTurnIndex] !== humanColor)) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) / (rect.width / 15);
+        const mouseY = (e.clientY - rect.top) / (rect.height / 15);
+        const color = players[currentTurnIndex];
+        const clickedToken = allTokens[color].find(t => {
+            const coord = (t.pos === -1) ? [t.startX, t.startY] : paths[color][t.pos];
+            const tx = (t.pos === -1) ? coord[0] : coord[0] + 0.5;
+            const ty = (t.pos === -1) ? coord[1] : coord[1] + 0.5;
+            return Math.sqrt(Math.pow(mouseX - tx, 2) + Math.pow(mouseY - ty, 2)) < 0.6;
+        });
+        if (clickedToken) processMove(clickedToken, color);
+    });
+
+    function processMove(token, color) {
+        if (!token) return;
+        
+        const tokensOnBoard = allTokens[color].filter(t => t.pos > -1 && t.pos < paths[color].length - 1);
+        const rolledSix = diceValues[0] === 6 || diceValues[1] === 6;
+
+        if (tokensOnBoard.length === 1 && token.pos !== -1 && !rolledSix && usedDice.every(d => !d)) {
+            const totalMove = diceValues[0] + diceValues[1];
+            if (!isPathBlocked(token, color, totalMove).blocked) {
+                token.pos += totalMove;
+                usedDice = [true, true];
+                checkCapture(color, token.pos);
+                checkBarrierCreated(color, token.pos);
+                finishMoveSequence(token, color);
+                return;
+            }
+        }
+
+        if (selectedDieIndex === null || usedDice[selectedDieIndex]) return;
+        const moveVal = diceValues[selectedDieIndex];
+        
+        if (!canTokenMove(token, color, selectedDieIndex)) {
+            playBlockedVoice(color);
+            return;
+        }
+
+        if (token.pos === -1 && moveVal === 6) {
+            playBornVoice(color);
+        }
+
+        token.pos = (token.pos === -1) ? 0 : token.pos + moveVal;
+        usedDice[selectedDieIndex] = true;
+
+        let captureHappened = false;
+        if (token.pos <= 51) {
+            captureHappened = checkCapture(color, token.pos);
+            checkBarrierCreated(color, token.pos);
+        }
+
+        if (captureHappened) {
+            usedDice = [true, true];
+        }
+
+        finishMoveSequence(token, color);
+    }
+
+    function checkBarrierCreated(color, pos) {
+        if (allTokens[color].filter(t => t.pos === pos && pos !== -1).length === 2) playBarrierVoice(color);
+    }
+
+    function checkCapture(movingColor, posIndex) {
+        const targetCoord = paths[movingColor][posIndex];
+        let captured = false;
+        players.forEach(oc => {
+            if (oc === movingColor) return;
+            const opponents = allTokens[oc].filter(t => {
+                const c = getCoord(oc, t.pos);
+                return c && c[0] === targetCoord[0] && c[1] === targetCoord[1];
+            });
+            if (opponents.length === 1) { 
+                opponents[0].pos = -1; 
+                playCaptureVoice(movingColor); 
+                captured = true;
+            }
+        });
+        return captured;
+    }
+
+    function finishMoveSequence(token, color) {
+        if (token.pos === paths[color].length - 1) playHomeVoice(color);
+        
+        if (allTokens[color].every(t => t.pos === paths[color].length - 1)) {
+            playVictoryVoice(color);
+            setTimeout(() => {
+                alert(`GOAL!!! ${playerNames[color]} WINS!`);
+                location.reload();
+            }, 1000);
+            return;
+        }
+        selectedDieIndex = usedDice.indexOf(false);
+        if (selectedDieIndex === -1) selectedDieIndex = null;
+        updateDiceDisplay();
+        if (usedDice.every(d => d === true)) setTimeout(moveToNextTurn, 1000);
+        else checkNoMovesPossible();
+    }
+
+    function moveToNextTurn() {
+        if (bonusRolls > 0) {
+            bonusRolls--;
+            rollBtn.disabled = false;
+            rollStatus.innerText = "Extra Roll! " + playerNames[players[currentTurnIndex]].toUpperCase();
+        } else {
+            currentTurnIndex = (currentTurnIndex + 1) % 4;
+            rollBtn.disabled = false;
+            updateTurnUI();
+        }
+        if (isAiGame && players[currentTurnIndex] !== humanColor) setTimeout(aiTurn, 1500);
+    }
+
+    function checkNoMovesPossible() {
+        const color = players[currentTurnIndex];
+        const canMove = allTokens[color].some(t => (!usedDice[0] && canTokenMove(t, color, 0)) || (!usedDice[1] && canTokenMove(t, color, 1)));
+        if (!canMove && !usedDice.every(d => d)) {
+            rollStatus.innerText = "No moves! Passing turn...";
+            setTimeout(() => { usedDice = [true, true]; moveToNextTurn(); }, 1500);
+        }
+    }
+
+    function aiTurn() {
+        if (!isAiGame || players[currentTurnIndex] === humanColor || !gameStarted) return;
+        rollBtn.click();
+        
+        setTimeout(() => {
+            const color = players[currentTurnIndex];
+            const solve = () => {
+                if (usedDice.every(d => d)) return;
+                let best = null;
+
+                for (let dIdx of [0, 1]) {
+                    if (usedDice[dIdx]) continue;
+                    for (let t of allTokens[color]) {
+                        if (canTokenMove(t, color, dIdx)) {
+                            let weight = t.pos;
+                            const nextPos = t.pos === -1 ? 0 : t.pos + diceValues[dIdx];
+                            if (aiDifficulty >= 2) {
+                                if (t.pos === -1) weight += 100;
+                                const target = paths[color][nextPos];
+                                players.forEach(oc => {
+                                    if(oc !== color && allTokens[oc].some(ot => {
+                                        const c = getCoord(oc, ot.pos);
+                                        return c && c[0] === target[0] && c[1] === target[1];
+                                    })) weight += 200;
+                                });
+                            }
+                            if (aiDifficulty === 3) {
+                                if (allTokens[color].some(ot => ot !== t && ot.pos === nextPos)) weight += 150;
+                                if (nextPos > 45) weight += 50;
+                            }
+                            if (!best || weight > best.weight) best = { t, dIdx, weight };
+                        }
+                    }
+                }
+
+                if (best) {
+                    selectedDieIndex = best.dIdx;
+                    processMove(best.t, color);
+                    setTimeout(solve, 1500);
+                } else {
+                    usedDice = [true, true]; moveToNextTurn();
+                }
+            };
+            solve();
+        }, 2000);
+    }
+
+    function drawDice(canvasCtx, number, isSelected, isUsed) {
+        canvasCtx.clearRect(0, 0, 100, 100); canvasCtx.save();
+        canvasCtx.globalAlpha = isUsed ? 0.2 : 1.0;
+        canvasCtx.fillStyle = "#FFFFFF"; canvasCtx.beginPath(); canvasCtx.roundRect(10, 10, 80, 80, 15); canvasCtx.fill();
+        canvasCtx.strokeStyle = isSelected ? "gold" : "#CCC"; canvasCtx.lineWidth = isSelected ? 5 : 2; canvasCtx.stroke();
+        const pips = { 1:[[50,50]], 2:[[30,30],[70,70]], 3:[[30,30],[50,50],[70,70]], 4:[[30,30],[30,70],[70,30],[70,70]], 5:[[30,30],[30,70],[70,30],[70,70],[50,50]], 6:[[30,30],[30,50],[30,70],[70,30],[70,50],[70,70]] };
+        if (number > 0) pips[number].forEach(p => { canvasCtx.fillStyle = "#333"; canvasCtx.beginPath(); canvasCtx.arc(p[0], p[1], 7, 0, Math.PI * 2); canvasCtx.fill(); });
+        canvasCtx.restore();
+    }
+
+    function updateDiceDisplay() {
+        drawDice(d1ctx, diceValues[0], selectedDieIndex === 0, usedDice[0]);
+        drawDice(d2ctx, diceValues[1], selectedDieIndex === 1, usedDice[1]);
+    }
+
+    function drawRect(x, y, w, h, color) {
+        ctx.fillStyle = color; ctx.fillRect(x * step, y * step, w * step, h * step);
+        ctx.strokeStyle = colors.border; ctx.lineWidth = 1; ctx.strokeRect(x * step, y * step, w * step, h * step);
+    }
+
+    function drawFootballToken(x, y, color, count, index, isSelectable) {
+        ctx.save();
+        let scale = count > 1 ? 0.6 : 1.0;
+        let offsetX = count > 1 ? ((index % 2) - 0.5) * (step * 0.5) : 0;
+        let offsetY = count > 1 ? (Math.floor(index / 2) - 0.5) * (step * 0.5) : 0;
+        const px = (x * step) + offsetX, py = (y * step) + offsetY;
+        const playerSize = (step * 0.4) * scale;
+        if (isSelectable) { ctx.shadowBlur = 15; ctx.shadowColor = "white"; ctx.strokeStyle = "gold"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(px, py + (playerSize * 0.5), playerSize * 1.5, 0, Math.PI * 2); ctx.stroke(); }
+        ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(px - playerSize, py, playerSize * 2, playerSize * 1.2, [5, 5, 0, 0]); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#FFDBAC"; ctx.beginPath(); ctx.arc(px, py - (playerSize * 0.2), playerSize * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawBases() {
+        drawRect(0, 0, 6, 6, colors.red); drawRect(9, 0, 6, 6, colors.green);
+        drawRect(9, 9, 6, 6, colors.yellow); drawRect(0, 9, 6, 6, colors.blue);
+        const groups = {};
+        players.forEach(c => allTokens[c].forEach(t => {
+            const coord = t.pos === -1 ? [t.startX, t.startY] : paths[c][t.pos];
+            const key = `${coord[0].toFixed(1)},${coord[1].toFixed(1)}`;
+            if(!groups[key]) groups[key] = [];
+            groups[key].push({t, c});
+        }));
+        Object.entries(groups).forEach(([key, group]) => {
+            const [kx, ky] = key.split(',').map(Number);
+            group.forEach((item, i) => {
+                const color = players[currentTurnIndex];
+                const tokensOnBoard = allTokens[color].filter(tk => tk.pos > -1 && tk.pos < paths[color].length - 1);
+                const rolledSix = diceValues[0] === 6 || diceValues[1] === 6;
+
+                let selectable = (item.c === color);
+                if (selectable) {
+                    if (tokensOnBoard.length === 1 && !rolledSix && item.t.pos !== -1) {
+                         selectable = true; 
+                    } else {
+                         selectable = selectedDieIndex !== null && canTokenMove(item.t, item.c, selectedDieIndex);
+                    }
+                }
+
+                drawFootballToken(item.t.pos === -1 ? kx : kx + 0.5, item.t.pos === -1 ? ky : ky + 0.5, colors[item.c], group.length, i, selectable);
+            });
+        });
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, size, size);
+        for (let i = 0; i < 15; i++) for (let j = 0; j < 15; j++) {
+            if ((i >= 6 && i <= 8) || (j >= 6 && j <= 8)) {
+                if (i >= 6 && i <= 8 && j >= 6 && j <= 8) continue;
+                drawRect(i, j, 1, 1, colors.white);
+                if (i > 0 && i < 6 && j === 7) drawRect(i, j, 1, 1, colors.red);
+                if (j > 0 && j < 6 && i === 7) drawRect(i, j, 1, 1, colors.green);
+                if (i > 8 && i < 14 && j === 7) drawRect(i, j, 1, 1, colors.yellow);
+                if (j > 8 && j < 14 && i === 7) drawRect(i, j, 1, 1, colors.blue);
+                if (i === 1 && j === 6) drawRect(i, j, 1, 1, colors.red);
+                if (i === 8 && j === 1) drawRect(i, j, 1, 1, colors.green);
+                if (i === 13 && j === 8) drawRect(i, j, 1, 1, colors.yellow);
+                if (i === 6 && j === 13) drawRect(i, j, 1, 1, colors.blue);
+            }
+        }
+        const c = size/2;
+        const tris = [{p:[6,6,6,9],c:colors.red},{p:[6,6,9,6],c:colors.green},{p:[9,6,9,9],c:colors.yellow},{p:[6,9,9,9],c:colors.blue}];
+        tris.forEach(t => { ctx.fillStyle = t.c; ctx.beginPath(); ctx.moveTo(c,c); ctx.lineTo(t.p[0]*step,t.p[1]*step); ctx.lineTo(t.p[2]*step,t.p[3]*step); ctx.closePath(); ctx.fill(); ctx.stroke(); });
+        drawBases();
+        requestAnimationFrame(animate);
+    }
+    animate();
+</script>
+</body>
+</html>

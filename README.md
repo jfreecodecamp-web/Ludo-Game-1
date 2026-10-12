@@ -4,7 +4,7 @@
 
 A football-themed Ludo prototype built with vanilla JavaScript and HTML5 Canvas. Choose a colour, roll two dice, and race four tokens home in a local four-player match or against computer opponents.
 
-[Browse source](https://github.com/jfreecodecamp-web/Ludo-Game-1/blob/main/index.html) · [Developer profile](https://github.com/jfreecodecamp-web)
+[Play live demo](https://jfreecodecamp-web.github.io/Ludo-Game-1/) · [Browse source](https://github.com/jfreecodecamp-web/Ludo-Game-1/blob/main/index.html) · [Developer profile](https://github.com/jfreecodecamp-web)
 
 ## Preview
 
